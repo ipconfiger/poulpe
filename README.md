@@ -46,8 +46,7 @@ JSON Body的格式如下：
         "delay": 0,       # 延迟执行的秒数，0为即时触发
         "name": "命令名",  # GET|POST的时候是请求地址，EXEC为命令名，MAIL_TO为邮件名
         "params": "参数",  # GET时为QueryString，POST时是JSON字符串，EXEC时为空格隔开的参数，MAIL_TO的时候为专门定义的JSON字符串
-        "cc": 3,          # 支持并行执行的数量，0为不限制
-        "cf": "test"      # 并行标识，相同标识的处于相同的并行队列
+        "cc": "1 3",      # 空格隔开的指定线程编号，这里指定两个线程，表示最多可以并行执行2个任务，留空表示不限制
     }
 
 MAIL_TO 的params的JSON结构

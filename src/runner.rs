@@ -34,7 +34,7 @@ pub struct Task {
     pub post_time: i64,
     pub exec_time: i64,
     pub retry: i32,
-    pub cf: String,
+    pub cc: Vec<i32>,
     pub error: String
 }
 
