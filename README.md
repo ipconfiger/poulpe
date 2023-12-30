@@ -1,4 +1,8 @@
 # poulpe : /pulp/
+
+![octopus](https://github.com/ipconfiger/poulpe/assets/950968/aa364b2f-9429-40c1-b110-2d29f033e213)
+
+
 Light weight easy to use task manager written by Rust
 
 使用Rust实现的轻量级作业管理系统。
