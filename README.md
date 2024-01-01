@@ -45,12 +45,13 @@ Light weight easy to use task manager written by Rust
 JSON Body的格式如下：
 
     {
-        "id": "唯一编码",
+        "id": "唯一编码, 任务的唯一编号",
         "method": "作业执行的类型 GET|POST|EXEC|MAIL_TO",
         "delay": 0,       # 延迟执行的秒数，0为即时触发
         "name": "命令名",  # GET|POST的时候是请求地址，EXEC为命令名，MAIL_TO为邮件名
         "params": "参数",  # GET时为QueryString，POST时是JSON字符串，EXEC时为空格隔开的参数，MAIL_TO的时候为专门定义的JSON字符串
         "cc": "1 3",      # 空格隔开的指定线程编号，这里指定两个线程，表示最多可以并行执行2个任务，留空表示不限制
+        "wait": 0         # 可选，大于0表示需要在提交任务后等待执行的结果，数值为等待超时时间
     }
 
 MAIL_TO 的params的JSON结构
@@ -70,4 +71,10 @@ CRON配置文件格式
     1  *  *  *  *  *  *     cmd     GET     xx xx xx xx
 
 cron不支持MAIL_TO
+
+### 获取待执行结果：
+
+系统提供long pulling获取执行结果的接口，以提供给需要更长执行时间的任务用于获取执行结果：比如压缩视频
+
+    curl http://127.0.0.1:8000/task_resp/任务编号
 

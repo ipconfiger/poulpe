@@ -8,7 +8,7 @@ use redis::{AsyncCommands, Commands};
 use std::net::SocketAddr;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
-use axum::{extract::{Json, State}, Router, routing::post, response::IntoResponse};
+use axum::{extract::{Json, path::Path as PathParam, State}, Router, routing::{post, get}, response::IntoResponse};
 use std::{env, thread};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use tokio::fs;
 use runner::{Task, AppConfig};
 use dirs;
-
+use redis::aio::Connection;
 
 
 #[derive(Clone)]
@@ -37,7 +37,8 @@ struct WebTask {
     delay: i32,
     name: String,
     params: String,
-    cc: String
+    cc: String,
+    wait: Option<usize>
 }
 
 impl WebTask {
@@ -60,7 +61,8 @@ impl WebTask {
             exec_time: 0,
             retry: 0,
             cc,
-            error: "".to_string()
+            error: "".to_string(),
+            waiting_resp: if let Some(w) = self.wait { w }else { 0usize }
         }
     }
 }
@@ -297,6 +299,8 @@ async fn main() {
                         if !if_err.is_empty() {
                             task.error = if_err.to_string();
                             println!("执行错误：{}", task.error);
+
+                            redis_connection.rpush::<String, String, ()>(format!("resp:{}", task.id.clone()), if_err).expect("返回执行结果错误");
                             if let Ok(save_payload) = serde_json::to_string(&task) {
                                 redis_connection.set::<String, String, ()>(task.id.clone(), save_payload).expect("回存变更错误");
                             }
@@ -421,6 +425,7 @@ async fn main() {
     };
     let app = Router::new()
         .route("/task_in_queue", post(handler))
+        .route("/task_resp/:key", get(waiting))
         .with_state(app_state);
 
     println!("server will start at 0.0.0.0:{}", port);
@@ -459,9 +464,37 @@ pub async fn handler(State(mut state): State<AppState>,
             let delay_key = format!("{} {}", task.id, now_ts + web_task.delay as i64);
             conn.sadd::<String, String, ()>(TASK_DELAY.to_string(), delay_key.clone()).await.expect("set list error");
         }
-        Json(serde_json::json!({"result":"OK", "reason": ""}))
+        if let Some(is_wait) = web_task.wait {
+            if is_wait > 0usize {
+                let resp = waiting_for_result(&mut conn, task.id.clone(), is_wait).await;
+                Json(resp)
+            }else{
+                Json(serde_json::json!({"result":"OK", "reason": ""}))
+            }
+        }else{
+            Json(serde_json::json!({"result":"OK", "reason": ""}))
+        }
     }else{
         Json(serde_json::json!({"result":"Fail", "reason": format!("非法的请求:{}", payload.clone())}))
+    }
+}
+
+async fn waiting(State(mut state): State<AppState>, PathParam(key): PathParam<String>) -> impl IntoResponse {
+    let mut conn = state.redis_client.get_async_connection().await.unwrap();
+    let resp = waiting_for_result(&mut conn, key, 60).await;
+    Json(resp)
+}
+
+async fn waiting_for_result(conn: &mut Connection, flag: String, waiting: usize) -> serde_json::Value {
+    let result_key = format!("resp:{}", flag);
+    if let Ok(rp) = conn.blpop::<String, String>(result_key, waiting).await {
+        if rp == "OK" {
+            serde_json::json!({"result":"OK", "reason": ""})
+        }else{
+            serde_json::json!({"result":"Fail", "reason": format!("错误：{}", rp)})
+        }
+    }else{
+        serde_json::json!({"result":"Timeout", "reason": "等待超时"})
     }
 }
 
@@ -543,7 +576,8 @@ fn get_tasks_avaliable(tasks: &Vec<String>, avaliable_tasks: &mut Vec<Task>) {
                         exec_time:0,
                         retry:0,
                         cc: vec![],
-                        error: "".to_string()
+                        error: "".to_string(),
+                        waiting_resp: 0usize
                     };
                     avaliable_tasks.insert(0, task);
                 }

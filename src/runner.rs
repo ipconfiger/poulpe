@@ -35,7 +35,8 @@ pub struct Task {
     pub exec_time: i64,
     pub retry: i32,
     pub cc: Vec<i32>,
-    pub error: String
+    pub error: String,
+    pub waiting_resp: usize
 }
 
 impl Task {
