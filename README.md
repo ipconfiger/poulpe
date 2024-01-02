@@ -34,15 +34,19 @@ Light weight easy to use task manager written by Rust
         --smtp_name alex          #SMTP账号
         --smtp_pwd *****          #SMTP密码
         --starttls                #是否启用starttls
+        --kafka_servers           #Kafka的Broker列表，支持接入群集
+        --kafka_topic             #接收任务的Topic
+        --kafka_resp_topic        #返回任务执行结果的Topic
 
 
-实时触发和延迟触发均通过http接口
+实时触发和延迟触发均支持 HTTP 和 Kafka 多通道接入，默认只开启HTTP，在设置好正确的kafka前缀的参数后，即可从Kafka接收任务
 
+    http 接收任务的例子：
     curl -X POST http://127.0.0.1:8000/task_in_queue
          -H 'Content-Type: application/json'
          -d '{...}'
 
-JSON Body的格式如下：
+HTTP请求的JSON Body和Kafka的消息题的格式是一致的，都是JSON格式，定义如下：
 
     {
         "id": "唯一编码, 任务的唯一编号",

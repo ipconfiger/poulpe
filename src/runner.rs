@@ -13,7 +13,10 @@ pub struct AppConfig {
     pub smtp_pwd: String,
     pub retry_interval: i32,
     pub max_retry: i32,
-    pub starttls: bool
+    pub starttls: bool,
+    pub kafka_servers: String,
+    pub kafka_topic: String,
+    pub kafka_resp_topic: String
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -36,7 +39,8 @@ pub struct Task {
     pub retry: i32,
     pub cc: Vec<i32>,
     pub error: String,
-    pub waiting_resp: usize
+    pub waiting_resp: usize,
+    pub src_chn: String
 }
 
 impl Task {
