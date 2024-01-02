@@ -2,7 +2,7 @@ mod runner;
 
 extern crate redis;
 use std::sync::{Arc, Mutex};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use clap::{App, Arg, ArgMatches};
 use redis::{AsyncCommands, Commands};
 use std::net::SocketAddr;
@@ -426,6 +426,7 @@ async fn main() {
     let app = Router::new()
         .route("/task_in_queue", post(handler))
         .route("/task_resp/:key", get(waiting))
+        .route("/sys_info", get(system_info_handler))
         .with_state(app_state);
 
     println!("server will start at 0.0.0.0:{}", port);
@@ -496,6 +497,37 @@ async fn waiting_for_result(conn: &mut Connection, flag: String, waiting: usize)
     }else{
         serde_json::json!({"result":"Timeout", "reason": "等待超时"})
     }
+}
+
+async fn system_info_handler(State(mut state): State<AppState>) -> impl IntoResponse {
+    let mut conn = state.redis_client.get_async_connection().await.unwrap();
+    let working_keys = if let Ok(_working_keys) = conn.smembers::<String, Vec<String>>(TASK_WORKING.to_string()).await {
+        _working_keys
+    }else{
+        vec![]
+    };
+    let delaying_keys = if let Ok(_delaying_keys) = conn.smembers::<String, Vec<String>>(TASK_DELAY.to_string()).await {
+        _delaying_keys
+    }else{
+        vec![]
+    };
+    let wronging_keys = if let Ok(_wronging_keys) = conn.smembers::<String, Vec<String>>(TASK_WORKING.to_string()).await {
+        _wronging_keys
+    }else{
+        vec![]
+    };
+    let mut chn_map: HashMap<i32, usize> = HashMap::new();
+    for chn in 0..state.queue.size {
+        let ct = state.queue.get_queue_len(chn);
+        chn_map.insert(chn, ct);
+    }
+    let payload = serde_json::json!({
+        "working_keys": working_keys,
+        "delaying_keys": delaying_keys,
+        "wronging_keys": wronging_keys,
+        "channel_sizes": chn_map
+    });
+    Json(payload)
 }
 
 async fn read_crontab_file(config_path: PathBuf, tasks: &mut Vec<String>) -> io::Result<()> {
