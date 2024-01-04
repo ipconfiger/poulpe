@@ -5,7 +5,21 @@
 
 Light weight easy to use task manager written by Rust
 
+A lightweight job management system implemented in Rust. It is designed to simplify the development of task scheduling in online systems, supporting second-level granularity for timed task triggering, as well as immediate and delayed task scheduling. At this stage, it supports triggering HTTP requests, local server program calls, email sending, and other types of tasks. Tasks are executed in multiple pre-started worker threads, with support for controlling the concurrency capabilities of tasks. In this way, developers can focus on the business, without having to worry about technical details such as multithreading, multiprocessing, concurrency, thread isolation, process calls, error retries, task persistence, and recovery of tasks after restart. Developed in Rust, the released version is compiled with Musl for the x86 architecture, and consists of a single executable file that is ready to use out of the box. Musl compilation ensures that the program has no unnecessary dependencies and can be executed in minimal Docker images such as Alpine, making deployment convenient and fast.
+
 使用Rust实现的轻量级作业管理系统。用于简化线上系统的任务调度开发，支持秒级粒度的定时任务触发，支持即时任务调度以及延迟任务调度。现阶段支持触发HTTP请求，服务端本地程序调用，邮件发送等任务类型。任务执行在多个预启动的工作线程中，支持对任务的并发能力进行控制。如此这般，开发人员可以将精力集中于业务，而不需要关心多线程，多进程，并发，线程隔离，进程调用，错误重试，任务持久化，重启任务的恢复等技术细节。采用Rust开发，发布的基于x86架构的Musl编译版本，只有一个可执行文件，开箱即用，Musl编译使得程序没有任何多余的依赖，可以在Apline等最小化的Docker镜像中执行，部署方便快捷。
+
+The supported job modes include:
+
+1. Scheduled tasks (second-level granularity)
+2. Delayed trigger tasks
+3. Immediate trigger tasks
+
+Supported types of job execution include:
+
+1. HTTP (GET | POST)
+2. Email
+3. Server-side local scripts
 
 支持的作业模式有：
 
@@ -19,7 +33,7 @@ Light weight easy to use task manager written by Rust
 2. 邮件
 3. 服务端本地脚本
 
-例子：
+例子（Sample）：
 
     ./poulpe \
         --port 8000               #运行的端口
@@ -37,6 +51,12 @@ Light weight easy to use task manager written by Rust
         --kafka_servers           #Kafka的Broker列表，支持接入群集
         --kafka_topic             #接收任务的Topic
         --kafka_resp_topic        #返回任务执行结果的Topic
+
+｜参数（parameter）|说明|Description|
+|port|运行端口|port for http server|
+|redis|用于持久化作业的redis连接|Redis connection used for job persistence.|
+|cron|定义定时任务的文件地址|File path for defining scheduled tasks|
+|dead|死信箱目录，用于存储死任务|Dead letter directory, used for storing dead tasks|
 
 
 实时触发和延迟触发均支持 HTTP 和 Kafka 多通道接入，默认只开启HTTP，在设置好正确的kafka前缀的参数后，即可从Kafka接收任务
