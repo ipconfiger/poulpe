@@ -52,11 +52,12 @@ Supported types of job execution include:
         --kafka_topic             #接收任务的Topic
         --kafka_resp_topic        #返回任务执行结果的Topic
 
-｜参数（parameter）|说明|Description|
-|port|运行端口|port for http server|
-|redis|用于持久化作业的redis连接|Redis connection used for job persistence.|
-|cron|定义定时任务的文件地址|File path for defining scheduled tasks|
-|dead|死信箱目录，用于存储死任务|Dead letter directory, used for storing dead tasks|
+| 参数（parameter） |说明| Description                                        |
+|---------------| ------------- |----------------------------------------------------|
+| port          |运行端口| port for http server                               |
+| redis         |用于持久化作业的redis连接| Redis connection used for job persistence.         |
+| cron          |定义定时任务的文件地址| File path for defining scheduled tasks             |
+| dead          |死信箱目录，用于存储死任务| Dead letter directory, used for storing dead tasks |
 
 
 实时触发和延迟触发均支持 HTTP 和 Kafka 多通道接入，默认只开启HTTP，在设置好正确的kafka前缀的参数后，即可从Kafka接收任务
