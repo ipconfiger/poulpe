@@ -96,8 +96,9 @@ impl QueueGroup {
     }
     fn push_to(&mut self, chn: i32, msg: &String) {
         let q: &Arc<Mutex<VecDeque<String>>> = self.queues.get(chn as usize).unwrap();
-        let mut queue = q.lock().unwrap();
-        queue.push_back(msg.to_string());
+        while let Ok(mut queue) = q.lock() {
+            return queue.push_back(msg.to_string());
+        }
     }
     fn shorted_chn(&mut self) -> i32 {
         let rg = 0..self.size;
@@ -106,7 +107,7 @@ impl QueueGroup {
     fn get_queue_len(&mut self, chn: i32) -> usize {
         if let Some(q) = self.queues.get(chn as usize) {
             println!("获取到{}的信箱", chn);
-            if let Ok(queue) = q.lock() {
+            while let Ok(queue) = q.lock() {
                 return queue.len();
             }
         }
