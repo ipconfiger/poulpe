@@ -1,4 +1,5 @@
 mod runner;
+mod ws;
 
 extern crate redis;
 use std::sync::{Arc, Mutex};
@@ -8,11 +9,12 @@ use redis::{AsyncCommands, Commands};
 use std::net::SocketAddr;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
-use axum::{extract::{Json, path::Path as PathParam, State}, Router, routing::{post, get}, response::IntoResponse};
+use axum::{extract::{Json, path::Path as PathParam, State, ws::{Message as WsMessage, WebSocket, WebSocketUpgrade}}, Router, routing::{post, get}, response::IntoResponse, ServiceExt};
+use axum_extra::{headers, TypedHeader};
 use std::{env, thread};
-
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use axum::extract::ConnectInfo;
 use tokio::fs::File;
 use tokio::io::{self, BufReader, AsyncBufReadExt};
 use chrono::{DateTime, Utc, Local};
@@ -25,6 +27,7 @@ use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{Consumer, BaseConsumer};
 use rdkafka::producer::{BaseProducer, BaseRecord, Producer};
 use rdkafka::Message;
+use crate::ws::{handle_socket, MessageExecutor};
 
 
 #[derive(Clone)]
@@ -32,7 +35,8 @@ pub struct AppState {
     pub config_path: String,
     pub redis_client: redis::Client,
     queue: QueueGroup,
-    pub config: AppConfig
+    pub config: AppConfig,
+    pub ws_executor: MessageExecutor
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -206,6 +210,34 @@ impl KafkaProducer {
     }
 }
 
+#[derive(Clone)]
+struct ResponseQueue {
+    queue: Arc<Mutex<VecDeque<(String, String)>>>
+}
+
+impl ResponseQueue {
+    fn new() -> ResponseQueue {
+        ResponseQueue{ queue: Arc::new(Mutex::new(VecDeque::new())) }
+    }
+
+    fn queue_resp(&mut self, task_id: String, resp: String) {
+        while let Ok(mut queue) = self.queue.lock() {
+            queue.push_back((task_id.clone(), resp.clone()));
+        }
+    }
+
+    fn wait_for(&mut self) -> Option<(String, String)> {
+        while let Ok(mut queue) = self.queue.lock() {
+            if let Some(resp) = queue.pop_front(){
+                return Some(resp);
+            }else{
+                return None;
+            }
+        }
+        None
+    }
+}
+
 
 const TASK_WRONG: &'static str = "task||wrong";
 
@@ -347,11 +379,15 @@ async fn main() {
     let mut queue_group = QueueGroup::init_by_number(workers);
 
     let client = redis::Client::open(redis).unwrap();
+    let mut ws_exec = MessageExecutor::new();
+
+    let mut resp_queue = ResponseQueue::new();
 
     for thread_id in 0..workers {
         let mut group = queue_group.clone();
         let mut redis_connection = client.get_connection().unwrap();
         let appconfig = appconfig.clone();
+        let mut resp_queue1 = resp_queue.clone();
         thread::spawn(move || {
             let mut pd = KafkaProducer::from_bootstrap(appconfig.kafka_servers.as_str(), appconfig.kafka_resp_topic.clone());
             loop {
@@ -387,6 +423,10 @@ async fn main() {
                                 }
                                 if task.src_chn == "kafka" {
                                     pd.sent(serde_json::json!({"result": "OK", "request_id": task.id.clone()}));
+                                }
+                                if task.src_chn == "ws" {
+                                    //ws_exec.response_for(task.id.clone(), serde_json::json!({"result": "OK", "request_id": task.id.clone()}));
+                                    resp_queue1.queue_resp(task_id.clone(), serde_json::to_string(&serde_json::json!({"result": "OK", "request_id": task.id.clone()})).unwrap());
                                 }
                             }
                         }
@@ -528,6 +568,18 @@ async fn main() {
         });
     }
 
+    let mut resp_queue2 = resp_queue.clone();
+    let mut ws_exec1 = ws_exec.clone();
+    tokio::spawn(async move {
+        loop {
+            if let Some((tid, resp_str)) = resp_queue2.wait_for() {
+                ws_exec1.response_for(tid, resp_str).await;
+            }else{
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            }
+        }
+    });
+
     if let Ok(mut main_conn) = client.get_async_connection().await {
         if let Ok(working_ids) = main_conn.smembers::<&str, Vec<String>>(TASK_WORKING).await {
             for tk_id in working_ids {
@@ -546,17 +598,19 @@ async fn main() {
         config_path: cron_path.to_string(),
         redis_client: client.clone(),
         queue: queue_group.clone(),
-        config: appconfig.clone()
+        config: appconfig.clone(),
+        ws_executor: ws_exec.clone()
     };
     let app = Router::new()
         .route("/task_in_queue", post(handler))
         .route("/task_resp/:key", get(waiting))
+        .route("/ws_task", get(ws_handler))
         .route("/sys_info", get(system_info_handler))
         .with_state(app_state);
 
     println!("server will start at 0.0.0.0:{}", port);
     let serv = axum::Server::bind(& SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), int_port))
-        .serve(app.into_make_service())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await;
     match serv {
         Ok(_)=>{
@@ -623,6 +677,21 @@ async fn waiting_for_result(conn: &mut Connection, flag: String, waiting: usize)
     }else{
         serde_json::json!({"result":"Timeout", "reason": "等待超时"})
     }
+}
+
+async fn ws_handler(
+    State(state): State<AppState>,
+    ws: WebSocketUpgrade,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> impl IntoResponse {
+    let addr = addr.clone();
+    println!("need to upgrade:{:?}", &addr);
+    ws.on_upgrade( move |socket| async move {
+        let socket = socket;
+        println!("socks {:?} connected, {}", &addr, state.queue.size);
+        //handle_socket(state.clone(), socket, addr)
+        handle_socket(state.clone(), socket, addr.clone()).await
+    })
 }
 
 async fn system_info_handler(State(mut state): State<AppState>) -> impl IntoResponse {

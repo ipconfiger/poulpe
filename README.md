@@ -71,15 +71,17 @@ Supported types of job execution include:
 | kafka_resp_topic | 返回任务执行结果的Topic     | Topic for response execute result                  |
 
 
-Both real-time triggering and delayed triggering support HTTP and Kafka multi-channel access. By default, only HTTP is enabled. After setting the correct Kafka prefix parameters, tasks can be received from Kafka.
+Both real-time triggering and delayed triggering support HTTP、WebSockets and Kafka multi-channel access. By default, only HTTP is enabled. After setting the correct Kafka prefix parameters, tasks can be received from Kafka.
 
-实时触发和延迟触发均支持 HTTP 和 Kafka 多通道接入，默认只开启HTTP，在设置好正确的kafka前缀的参数后，即可从Kafka接收任务
+实时触发和延迟触发均支持 HTTP、 Kafka、WebSockets等 多通道接入，默认只开启HTTP和WebSockets，在设置好正确的kafka前缀的参数后，即可从Kafka接收任务
 
     http 接收任务的例子(Sample for http)：
     curl -X POST http://127.0.0.1:8000/task_in_queue
          -H 'Content-Type: application/json'
          -d '{...}'
 
+    WebSockets连接的地址为：（Address for WebSockets incomming）
+    ws://ip:port/ws_task
 
 The format of the JSON body for HTTP requests and the message topic for Kafka is consistent, both in JSON format, as defined below:
 
